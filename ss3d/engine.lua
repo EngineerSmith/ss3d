@@ -66,7 +66,7 @@ function engine.loadObj(objPath)
 	return obj
 end
 
-function engine.newModel(vertices, indices, texture, calculateNormals)
+function engine.newModel(vertices, indices, texture, normal, specular)
     local m = {}
 
     local fmt = {
@@ -79,6 +79,8 @@ function engine.newModel(vertices, indices, texture, calculateNormals)
 
     assert(vertices ~= nil, "NewModel require verts")
 	m.texture = texture or engine.defaultTexture or error("NewModel requires a texture")
+	m.normalMap = normal
+	m.specularMap = specular
 	
 	-- Calculate Tangents
 	for i=1, #indices, 3 do
@@ -201,7 +203,7 @@ function engine.newModel(vertices, indices, texture, calculateNormals)
         self.transform:translate(self.transform, vec3(coords))
         if rotations ~= nil then
             for i=1, #rotations, 2 do
-                self.transform:rotate(self.transform, rotations[i],rotations[i+1])
+                self.transform:rotate(self.transform, rotations[i],rotations[i+1]) -- radians, unit vector
             end
         end
         self.transform = TransposeMatrix(self.transform)
@@ -309,8 +311,7 @@ function engine.newScene(renderWidth,renderHeight)
 			// Specular
 			vec3 e = normalize(vposition - eye);
 			float specularFactor = pow(max(dot(reflect(-lightDir, n), e), 0.0f), 3.0f);
-			vec3 s = specularFactor * (vec3(0.8) * Texel(specularMap, texture_coords).rgb);
-			vec3 specular = clamp(s, 0.0f, 1.0f);
+			vec3 specular = clamp(specularFactor * (vec3(0.8) * Texel(specularMap, texture_coords).rgb), 0.0f, 1.0f);
 			
 			return vec4((diffuse + vec3(0.3f)) * c.rgb + specular, c.a);
 		}
