@@ -1,5 +1,6 @@
--- store global reference to the Engine for use in calling functions
-Engine = require "ss3d"
+local ss3d = require("ss3d")
+local engine = ss3d.engine
+local cpml = ss3d.cpml
 
 function love.load()
     -- make the mouse cursor locked to the screen
@@ -11,53 +12,25 @@ function love.load()
 
     -- create a Scene object which stores and renders Models
     -- arguments refer to the Scene's camera's canvas output size in pixels
-    Scene = Engine.newScene(love.graphics.getWidth(), love.graphics.getHeight())
+    Scene = engine.newScene(love.graphics.getWidth(), love.graphics.getHeight())
+	Scene.ambientLight = 1
+	Scene.ambientVector = {0,0,1}
     DefaultTexture = love.graphics.newImage("assets/texture.png")
+	
+	local diffuse = love.graphics.newImage("assets/earth.bmp")
+	local normal = love.graphics.newImage("assets/earth_normals.jpg")
+	local specular = love.graphics.newImage("assets/earth_specular.jpg")
     Timer = 0
 
     Scene.camera.pos.x = 0
     Scene.camera.pos.z = 5
 
     -- turn the vertices into a Model with a texture
-    AlakazamModel = Engine.newModel(Engine.loadObj("assets/alakazam.obj"), DefaultTexture)
+	local obj = engine.loadObj("assets/earth.obj")
+    AlakazamModel = engine.newModel(obj.objects[1].vertices, obj.objects[1].indices, diffuse)
+	AlakazamModel.normalMap = normal
+	AlakazamModel.specularMap = specular
     Scene:addModel(AlakazamModel)
-
-    local pyramidVerts = {}
-    pyramidVerts[#pyramidVerts+1] = {-1,-1,-1}
-    pyramidVerts[#pyramidVerts+1] = {-1,1,1}
-    pyramidVerts[#pyramidVerts+1] = {1,1,-1}
-
-    pyramidVerts[#pyramidVerts+1] = {-1,1,1}
-    pyramidVerts[#pyramidVerts+1] = {1,1,-1}
-    pyramidVerts[#pyramidVerts+1] = {1,-1,1}
-
-    pyramidVerts[#pyramidVerts+1] = {-1,-1,-1}
-    pyramidVerts[#pyramidVerts+1] = {1,1,-1}
-    pyramidVerts[#pyramidVerts+1] = {1,-1,1}
-
-    pyramidVerts[#pyramidVerts+1] = {-1,-1,-1}
-    pyramidVerts[#pyramidVerts+1] = {-1,1,1}
-    pyramidVerts[#pyramidVerts+1] = {1,-1,1}
-
-    Pyramids = {}
-    for i=1, 4 do
-        Pyramids[#Pyramids+1] = Engine.newModel(pyramidVerts)
-        Pyramids[i].wireframe = true
-        Scene:addModel(Pyramids[i])
-    end
-
-    -- define vertices for a simple square floor
-    local floorVerts = {}
-    floorVerts[#floorVerts+1] = {-1,-1,-1, 0,0}
-    floorVerts[#floorVerts+1] = {1,-1,-1, 1,0}
-    floorVerts[#floorVerts+1] = {-1,-1,1, 0,1}
-    floorVerts[#floorVerts+1] = {1,-1,1, 1,1}
-    floorVerts[#floorVerts+1] = {-1,-1,1, 0,1}
-    floorVerts[#floorVerts+1] = {1,-1,-1, 1,0}
-
-    -- scale the vertices, then turn the vertices into a Model with a texture
-    FloorModel = Engine.newModel(Engine.scaleVerts(floorVerts, 20,4,20), DefaultTexture)
-    Scene:addModel(FloorModel)
 end
 
 function love.update(dt)
@@ -67,12 +40,8 @@ function love.update(dt)
     end
 
     -- make the AlakazamModel go in circles and rotate
-    Timer = Timer + dt/4
-    AlakazamModel:setTransform({0,-1.5,0}, {Timer, cpml.vec3.unit_y, Timer, cpml.vec3.unit_z, Timer, cpml.vec3.unit_x})
-
-    for i=1, #Pyramids do
-        Pyramids[i]:setTransform({math.cos(Timer +i*math.pi*0.5)*12, math.sin(Timer +i)*0.75 +1, math.sin(Timer +i*math.pi*0.5)*12}, {Timer, cpml.vec3.unit_y, Timer, cpml.vec3.unit_z, Timer, cpml.vec3.unit_x})
-    end
+    Timer = Timer + dt/2
+    AlakazamModel:setTransform({0,-1.5,0}, {Timer, cpml.vec3.unit_y, 0, cpml.vec3.unit_z, 0, cpml.vec3.unit_x})
 
     -- simple first-person camera movement
     local mx,my = 0,0
