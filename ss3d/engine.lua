@@ -33,10 +33,12 @@ end
 
 local engine = {}
 
-engine.defaultTexture = lg.newCanvas(1,1)
-lg.setCanvas(engine.defaultTexture)
-lg.clear(1,0,1,1)
-lg.setCanvas()
+engine.defaultMaterial = {
+	ambient  = {1.0, 1.0, 1.0},
+	diffuse  = {0.8, 0.8, 0.8},
+	specular = {0.5, 0.5, 0.5},
+	specularPower = 100.0,
+}
 
 function engine.loadObj(objPath)
     local obj = ObjReader.load(objPath)
@@ -66,7 +68,7 @@ function engine.loadObj(objPath)
 	return obj
 end
 
-function engine.newModel(vertices, indices, texture, normal, specular)
+function engine.newModel(vertices, indices, material)
     local m = {}
 
     local fmt = {
@@ -78,74 +80,75 @@ function engine.newModel(vertices, indices, texture, normal, specular)
     }
 
     assert(vertices ~= nil, "NewModel require verts")
-	m.texture = texture or engine.defaultTexture or error("NewModel requires a texture")
-	m.normalMap = normal
-	m.specularMap = specular
+	m.material = material or engine.defaultMaterial or error("NewModel requires a material")
 	
-	-- Calculate Tangents
-	for i=1, #indices, 3 do
-		local v1 = vertices[indices[i]]
-		local v2 = vertices[indices[i+1]]
-		local v3 = vertices[indices[i+2]]
-		
-		assert(#v1 == 14 or #v2 == 14 or #v3 == 14, "Vertex requires 14 elements: v1#"..#v1.." v2#"..#v2.." v3#"..#v3)
-		
-		local edge1X = v2[1] - v1[1]
-		local edge1Y = v2[2] - v1[2]
-		local edge1Z = v2[3] - v1[3]
-		
-		local edge2X = v3[1] - v1[1]
-		local edge2Y = v3[2] - v1[2]
-		local edge2Z = v3[3] - v1[3]
-		
-		local edge1uvX = v2[4] - v1[4]
-		local edge1uvY = v2[5] - v1[5]
-		
-		local edge2uvX = v3[4] - v1[4]
-		local edge2uvY = v3[5] - v1[5]
-		
-		local r = edge1uvX * edge2uvY - edge1uvY * edge2uvX
-		
-		if r ~= 0 then -- Edge case
-			r = r / 1.0
-			local tangentX = (edge1X * edge2uvY - edge2X * edge1uvY) * r
-			local tangentY = (edge1Y * edge2uvY - edge2Y * edge1uvY) * r
-			local tangentZ = (edge1Z * edge2uvY - edge2Z * edge1uvY) * r
-			local bitangentX = (edge2X * edge1uvX - edge1X * edge2uvX) * r
-			local bitangentY = (edge2Y * edge1uvX - edge1Y * edge2uvX) * r
-			local bitangentZ = (edge2Z * edge1uvX - edge1Z * edge2uvX) * r
+	engine.validateMaterial(m.material)
+	
+	-- Calculate Tangents if needed
+	if m.material._enabledMaps[2] or m.material._enabledMaps[3] or m.material._enabledMaps[4] then
+		for i=1, #indices, 3 do
+			local v1 = vertices[indices[i]]
+			local v2 = vertices[indices[i+1]]
+			local v3 = vertices[indices[i+2]]
 			
-			v1[9]  = v1[9]  + tangentX
-			v1[10] = v1[10] + tangentY
-			v1[11] = v1[11] + tangentZ
-			v1[12] = v1[12] + bitangentX
-			v1[13] = v1[13] + bitangentY
-			v1[14] = v1[14] + bitangentZ
+			assert(#v1 == 14 or #v2 == 14 or #v3 == 14, "Vertex requires 14 elements: v1#"..#v1.." v2#"..#v2.." v3#"..#v3)
 			
-			v2[9]  = v2[9]  + tangentX
-			v2[10] = v2[10] + tangentY
-			v2[11] = v2[11] + tangentZ
-			v2[12] = v2[12] + bitangentX
-			v2[13] = v2[13] + bitangentY
-			v2[14] = v2[14] + bitangentZ
+			local edge1X = v2[1] - v1[1]
+			local edge1Y = v2[2] - v1[2]
+			local edge1Z = v2[3] - v1[3]
 			
-			v3[9]  = v3[9]  + tangentX
-			v3[10] = v3[10] + tangentY
-			v3[11] = v3[11] + tangentZ
-			v3[12] = v3[12] + bitangentX
-			v3[13] = v3[13] + bitangentY
-			v3[14] = v3[14] + bitangentZ
+			local edge2X = v3[1] - v1[1]
+			local edge2Y = v3[2] - v1[2]
+			local edge2Z = v3[3] - v1[3]
+			
+			local edge1uvX = v2[4] - v1[4]
+			local edge1uvY = v2[5] - v1[5]
+			
+			local edge2uvX = v3[4] - v1[4]
+			local edge2uvY = v3[5] - v1[5]
+			
+			local r = edge1uvX * edge2uvY - edge1uvY * edge2uvX
+			
+			if r ~= 0 then -- Wastes time if 0
+				r = r / 1.0
+				local tangentX = (edge1X * edge2uvY - edge2X * edge1uvY) * r
+				local tangentY = (edge1Y * edge2uvY - edge2Y * edge1uvY) * r
+				local tangentZ = (edge1Z * edge2uvY - edge2Z * edge1uvY) * r
+				local bitangentX = (edge2X * edge1uvX - edge1X * edge2uvX) * r
+				local bitangentY = (edge2Y * edge1uvX - edge1Y * edge2uvX) * r
+				local bitangentZ = (edge2Z * edge1uvX - edge1Z * edge2uvX) * r
+				
+				v1[9]  = v1[9]  + tangentX
+				v1[10] = v1[10] + tangentY
+				v1[11] = v1[11] + tangentZ
+				v1[12] = v1[12] + bitangentX
+				v1[13] = v1[13] + bitangentY
+				v1[14] = v1[14] + bitangentZ
+				
+				v2[9]  = v2[9]  + tangentX
+				v2[10] = v2[10] + tangentY
+				v2[11] = v2[11] + tangentZ
+				v2[12] = v2[12] + bitangentX
+				v2[13] = v2[13] + bitangentY
+				v2[14] = v2[14] + bitangentZ
+				
+				v3[9]  = v3[9]  + tangentX
+				v3[10] = v3[10] + tangentY
+				v3[11] = v3[11] + tangentZ
+				v3[12] = v3[12] + bitangentX
+				v3[13] = v3[13] + bitangentY
+				v3[14] = v3[14] + bitangentZ
+			end
 		end
-	end
-
-	for _, vertex in ipairs(vertices) do
+	
+		for _, vertex in ipairs(vertices) do
 		-- Normalize
 		local length = VectorLengthSqrt(vertex[9], vertex[10], vertex[11])
 		vertex[9] = vertex[9] / length
 		vertex[10] = vertex[10] / length
 		vertex[11] = vertex[11] / length
 		
-		length = VectorLengthSqrt(vertex[12], vertex[13], vertex[14])
+		local length = VectorLengthSqrt(vertex[12], vertex[13], vertex[14])
 		vertex[12] = vertex[12] / length
 		vertex[13] = vertex[13] / length
 		vertex[14] = vertex[14] / length
@@ -161,8 +164,8 @@ function engine.newModel(vertices, indices, texture, normal, specular)
 		vertex[11] = vertex[11] / length
 		
 		-- Invert if facing wrong direction
-		local x,y,z = CrossProduct(vertex[6],vertex[7],vertex[8], vertex[9],vertex[10],vertex[11])
-		dot = x * vertex[12] + y * vertex[13] + z * vertex[14]
+		local x,y,z = CrossProduct(vertex[6],vertex[7],vertex[8], vertex[9],vertex[10],vertex[11]) -- Nor X Tan
+		local dot = x * vertex[12] + y * vertex[13] + z * vertex[14] -- Dot with BiTan
 		if dot < 0.0 then
 			vertex[9] = vertex[9] * -1.0
 			vertex[10] = vertex[10] * -1.0
@@ -170,12 +173,12 @@ function engine.newModel(vertices, indices, texture, normal, specular)
 		end
 	end
 
-    -- define the Model object's properties
+    end
+	-- define the Model object's properties
     m.mesh = nil
     if #vertices > 0 then
         m.mesh = lg.newMesh(fmt, vertices, "triangles")
 		m.mesh:setVertexMap(indices)
-        m.mesh:setTexture(m.texture)
     end
     m.format = fmt
     m.verts = vertices
@@ -184,20 +187,9 @@ function engine.newModel(vertices, indices, texture, normal, specular)
     m.visible = true
     m.wireframe = false
     m.culling = false
-
-    m.setMesh = function (self, vertices, indices)
-        if vertices and #vertices > 0 then
-            self.mesh = lg.newMesh(self.format, vertices, "triangles")
-			self.mesh:setVertexMap(indices)
-            self.mesh:setTexture(self.texture)
-		else
-			self.mesh = nil
-        end
-        self.verts = vertices
-		self.indices = indices
-    end
-
+	
     -- translate and rotate the Model
+	-- TODO pull out, transform and drawable are seperate 
     m.setTransform = function (self, coords, rotations)
         self.transform = mat4.identity()
         self.transform:translate(self.transform, vec3(coords))
@@ -209,35 +201,20 @@ function engine.newModel(vertices, indices, texture, normal, specular)
         self.transform = TransposeMatrix(self.transform)
     end
 
-    -- returns a copy of the verts this Model contains
-    m.getVerts = function (self)
-        local ret = {}
-        for i=1, #self.verts do
-            ret[#ret+1] = {self.verts[i][1], self.verts[i][2], self.verts[i][3]}
-        end
-
-        return ret
-    end
-
-    -- prints a list of the verts this Model contains
-    m.printVerts = function (self)
-        local verts = self:getVerts()
-        for i=1, #verts do
-            print(verts[i][1], verts[i][2], verts[i][3])
-            if i%3 == 0 then
-                print("---")
-            end
-        end
-    end
-
-    -- set a texture to this Model
-    m.setTexture = function (self, tex)
-        self.mesh:setTexture(tex)
-    end
-
     return m
 end
 
+function engine.validateMaterial(material)
+	material._enabledMaps = {}
+	material._enabledMaps[1] = material.diffuseMap ~= nil
+	material._enabledMaps[2] = material.specularMap ~= nil
+	material._enabledMaps[3] = material.specularColorMap ~= nil
+	material._enabledMaps[4] = material.bumpMap ~= nil
+	material.ambient = material.ambient or engine.defaultMaterial.ambient
+	material.diffuse = material.diffuse or engine.defaultMaterial.diffuse
+	material.specular = material.specular or engine.defaultMaterial.specular
+	material.specularPower = material.specularPower or engine.defaultMaterial.specularPower
+end
 -- create a new Scene object with given canvas output size
 function engine.newScene(renderWidth,renderHeight)
 	lg.setDepthMode("lequal", true)
@@ -248,72 +225,83 @@ function engine.newScene(renderWidth,renderHeight)
         uniform mat4 view;
         uniform mat4 model_matrix;
         uniform mat4 model_matrix_inverse;
-        uniform float ambientLight;
-        uniform vec3 ambientVector;
+		
+		uniform vec3 lightAmbient;
+        uniform vec3 lightDiffuse;
+        uniform vec3 lightVector;
 		uniform vec3 eye;
 		
-		uniform Image normalMap;
+		//Material
+		uniform vec3 ambientColor;
+		uniform vec3 diffuseColor;
+		uniform vec3 specularColor;
+		uniform float specularPower;
+		uniform Image diffuseMap;
 		uniform Image specularMap;
+		uniform Image specularColorMap;
+		uniform Image bumpMap;
+		uniform bool[4] enabledMaps;
 
         varying mat4 modelView;
         varying mat4 modelViewProjection;
 		varying mat3 TBN;
-        varying vec3 normal;
+		varying vec3 normal;
         varying vec3 vposition;
-
+		
         #ifdef VERTEX
-            attribute vec4 VertexNormal;
-			attribute vec4 VertexTangent; 
-			attribute vec4 VertexBiTangent;
+		attribute vec4 VertexNormal;
+		attribute vec4 VertexTangent; 
+		attribute vec4 VertexBiTangent;
+		
+		vec4 position(mat4 transform_projection, vec4 vertex_position)
+		{
+			modelView = view * model_matrix;
+			modelViewProjection = view * model_matrix * transform_projection;
 			
-            vec4 position(mat4 transform_projection, vec4 vertex_position) {
-                modelView = view * model_matrix;
-                modelViewProjection = view * model_matrix * transform_projection;
-
-                normal = vec3(model_matrix_inverse * vec4(VertexNormal));
-				
-				vec3 tangent = vec3(model_matrix_inverse * vec4(VertexTangent));
-				vec3 bitangent = vec3(model_matrix_inverse * vec4(VertexBiTangent));
-				
-				TBN = mat3(tangent, bitangent, normal);
-				
-                vposition = vec3(model_matrix * vertex_position);
-
-                return view * model_matrix * vertex_position;
-            }
+			normal = vec3(model_matrix_inverse * vec4(VertexNormal));
+			vec3 tangent = vec3(model_matrix_inverse * vec4(VertexTangent));
+			vec3 bitangent = vec3(model_matrix_inverse * vec4(VertexBiTangent));
+			
+			TBN = mat3(tangent, bitangent, normal);
+			
+			vposition = vec3(model_matrix * vertex_position);
+			
+			return view * model_matrix * vertex_position;
+		}
         #endif
 
         #ifdef PIXEL		
-        vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
-			vec4 texturecolor = Texel(texture, texture_coords);
-	
-			// if the alpha here is zero just don't draw anything here
-			// otherwise alpha values of zero will render as black pixels
-			if (texturecolor.a == 0.0)
-			{
-				discard;
-			}
+        vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
+		{
+			vec4 diffuse = vec4(diffuseColor, 1.0) * color;
+			if (enabledMaps[0])
+				diffuse *= Texel(diffuseMap, texture_coords);
 			
-			vec4 c = texturecolor * color;
-
-			vec3 n = TBN * normalize(Texel(normalMap, texture_coords).rgb - 0.5);
-
-			float light = max(dot(normalize(ambientVector), n), 0);
-			ambientLight;
-			//texturecolor.rgb *= max(light, ambientLight);
-	
-	
+			if (diffuse.a == 0.0)
+				discard;
+			
+			vec3 n = normal;
+			if (enabledMaps[3])
+				n = TBN * normalize(Texel(bumpMap, texture_coords).rgb - 0.5);
+			// LIGHT
+			// Ambient
+			vec3 ambientLight = lightAmbient * ambientColor;
 			// Diffuse
-			vec3 lightDir = normalize(ambientVector);
+			vec3 lightDir = normalize(lightVector);
 			float diffuseFactor = clamp(dot(n, lightDir), 0.0f, 1.0f);
-			vec3 diffuse = diffuseFactor * vec3(0.6);
-	
+			vec3 diffuseLight = diffuseFactor * lightDiffuse;
 			// Specular
 			vec3 e = normalize(vposition - eye);
-			float specularFactor = pow(max(dot(reflect(-lightDir, n), e), 0.0f), 3.0f);
-			vec3 specular = clamp(specularFactor * (vec3(0.8) * Texel(specularMap, texture_coords).rgb), 0.0f, 1.0f);
+			float specularFactor = pow(max(dot(reflect(-lightDir, n), e), 0.0f), specularPower);
 			
-			return vec4((diffuse + vec3(0.3f)) * c.rgb + specular, c.a);
+			vec3 specColor = specularColor;
+			if (enabledMaps[2])
+				specColor *= Texel(specularColorMap, texture_coords).rgb;
+			if (enabledMaps[1]) 
+				specularFactor *= Texel(specularMap, texture_coords).r;
+			vec3 specularLight = clamp(specularFactor * specColor, 0.0f, 1.0f);
+				
+			return vec4((ambientLight + diffuseLight) * diffuse.rgb + specularLight, diffuse.a);
 		}
         #endif
     ]]
@@ -337,8 +325,9 @@ function engine.newScene(renderWidth,renderHeight)
         perspective = TransposeMatrix(mat4.from_perspective(scene.fov, renderWidth/renderHeight, scene.nearClip, scene.farClip)),
     }
 
-    scene.ambientLight = 0.25
-    scene.ambientVector = {0,1,0}
+    scene.lightAmbient = {0.4, 0.4, 0.4}
+	scene.lightDiffuse = {0.8, 0.8, 0.8}
+    scene.lightVector = {0,1,4}
 
     -- returns a reference to the model
     scene.addModel = function (self, model)
@@ -379,6 +368,7 @@ function engine.newScene(renderWidth,renderHeight)
         lg.setCanvas({self.threeCanvas, depth=true})
         lg.clear(0,0,0,0)
         lg.setShader(self.threeShader)
+		local shader = self.threeShader
 
         -- compile camera data into usable view to send to threeShader
         local Camera = self.camera
@@ -387,20 +377,30 @@ function engine.newScene(renderWidth,renderHeight)
         camTransform:rotate(camTransform, Camera.angle.x, vec3.unit_y)
         camTransform:rotate(camTransform, Camera.angle.z, vec3.unit_z)
         camTransform:translate(camTransform, Camera.pos*-1)
-        self.threeShader:send("view", Camera.perspective * TransposeMatrix(camTransform))
-		self.threeShader:send("eye", {Camera.pos.x, Camera.pos.y, Camera.pos.z})
-        self.threeShader:send("ambientLight", self.ambientLight)
-        self.threeShader:send("ambientVector", self.ambientVector)
+        shader:send("view", Camera.perspective * TransposeMatrix(camTransform))
+		shader:send("eye", {Camera.pos.x, Camera.pos.y, Camera.pos.z})
+		shader:send("lightAmbient", self.lightAmbient)
+        shader:send("lightDiffuse", self.lightDiffuse)
+        shader:send("lightVector", self.lightVector)
 
         -- go through all models in modelList and draw them
         for i=1, #self.modelList do
             local model = self.modelList[i]
             if model ~= nil and model.visible and #model.verts > 0 then
-                self.threeShader:send("model_matrix", model.transform)
-                self.threeShader:send("model_matrix_inverse", TransposeMatrix(InvertMatrix(model.transform)))
-
-				self.threeShader:send("normalMap", model.normalMap)
-				self.threeShader:send("specularMap", model.specularMap)
+                shader:send("model_matrix", model.transform)
+                shader:send("model_matrix_inverse", TransposeMatrix(InvertMatrix(model.transform)))
+				
+				-- Material
+				local mat = model.material
+				shader:send("ambientColor", mat.ambient)
+				shader:send("diffuseColor", mat.diffuse)
+				shader:send("specularColor", mat.specular)
+				shader:send("specularPower", mat.specularPower)
+				shader:send("enabledMaps", unpack(mat._enabledMaps))
+				if mat.diffuseMap then shader:send("diffuseMap", mat.diffuseMap) end
+				if mat.specularMap then shader:send("specularMap", mat.specularMap) end
+				if mat.specularColorMap then shader:send("specularColorMap", mat.specularColorMap) end
+				if mat.bumpMap then shader:send("bumpMap", mat.bumpMap) end
 				
                 lg.setWireframe(model.wireframe)
                 if model.culling then
@@ -417,7 +417,6 @@ function engine.newScene(renderWidth,renderHeight)
         lg.setShader()
         lg.setCanvas()
 
-        --lg.setColor(1,1,1) -- Already set to white
         if drawArg == nil or drawArg == true then
             lg.draw(self.threeCanvas, self.renderWidth/2,self.renderHeight/2, 0, 1,-1, self.renderWidth/2, self.renderHeight/2)
         end

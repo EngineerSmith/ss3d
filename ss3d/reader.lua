@@ -18,20 +18,27 @@ local function exists(file)
 	return lf.getInfo(file) ~= nil
 end
 
-function loader.load(file)
-	assert(exists(file), "File not found: " .. file)
-	return loader.parse(file)
+local function getFilePath(path)
+	return path:match("(.+[/\\]).+%..+")
 end
 
-function loader.parse(file, obj)
+function loader.load(file, addObjDirToAssets)
+	assert(exists(file), "File not found: " .. file)
+	return loader.parseOBJ(file, nil, addObjDirToAssets)
+end
+
+function loader.parseOBJ(file, obj, addObjDirToAssets)
 	obj =  obj or {}
 	obj.objects = obj.objects or {}
+	addObjDirToAssets = addObjDirToAssets or true
 	
 	local vertices, normals, uvs, o = {}, {}, {}, nil
 
 	for line in lf.lines(file) do
 		local l = split(line, " ")
-		
+		if #l < 2 then
+			goto continue
+		end
 		if l[1] == "v" then
 			vertices[#vertices+1] = { num(l[2]), num(l[3]), num(l[4]) }
 		elseif l[1] == "vn" then
@@ -42,7 +49,7 @@ function loader.parse(file, obj)
 			for i=1, #l-1 do
 				local args = split(l[i+1], "/")
 				if not #args == 3 then
-					error("Expected OBJ formatted p/t/n")
+					error("Expected OBJ formatted v/t/n")
 				end
 				
 				local dv = vertices[num(args[1])]
@@ -51,7 +58,7 @@ function loader.parse(file, obj)
 				
 				o.points[#o.points+1] = {
 					dv[1], dv[2], dv[3], -- Pos
-					uv[1], uv[2],        -- Uv
+					uv[1], uv[2],        -- UV
 					dn[1], dn[2], dn[3], -- Norm
 					0.0, 0.0, 0.0,       -- Tan
 					0.0, 0.0, 0.0,       -- Bi-Tan
@@ -66,6 +73,8 @@ function loader.parse(file, obj)
 			else
 				error("Only triangles and quads supported. Got " .. (#l-1) .. " indices for a face")
 			end
+		elseif l[1] == "usemtl" then
+			o.material = l[2]
 		elseif l[1] == "o" then
 			local name = line:sub(3)
 			o = {
@@ -75,10 +84,66 @@ function loader.parse(file, obj)
 			}
 			
 			obj.objects[#obj.objects+1] = o
+		elseif l[1] == "mtllib" then
+			obj.materials = obj.materials or {}
+			local path = getFilePath(file)
+			loader.parseMTL(obj.materials, path..l[2], addObjDirToAssets and path or "")
 		end
+		::continue::
 	end
-
+	
 	return obj
+end
+
+function loader.parseMTL(materials, file, path)
+	local material = nil
+	
+	for line in lf.lines(file) do
+		local l = split(line, " ")
+		if #l < 2 then
+			goto continue
+		end
+		-- Base Material
+		if l[1] == "Ka" then
+			material.ambient = { num(l[2]), num(l[3]), num(l[4]) }
+		elseif l[1] == "Kd" then
+			material.diffuse = { num(l[2]), num(l[3]), num(l[4]) }
+		elseif l[1] == "Ke" then
+			material.emissive = { num(l[2]), num(l[3]), num(l[4]) }
+		elseif l[1] == "Ks" then
+			material.specular = { num(l[2]), num(l[3]), num(l[4]) }
+		elseif l[1] == "Ns" then
+			material.specularPower = num(l[2])
+		elseif l[1] == "Ni" then
+			material.refraction = num(l[2])
+		--[[elseif l[1] == "d" then -- Removed due to too much effort for number arguments
+			material.dissolve = num(l[2])]]
+		elseif l[1] == "illum" then
+			material.illuminationModel = num(l[2])
+		elseif l[1] == "newmtl" then
+			material = {}
+			materials[l[2]] = material
+		-- Mapping, doesn't support arguments, but will skip them
+		elseif l[1] == "map_Ka" then
+			material.ambientMap = path..l[#l]
+		elseif l[1] == "map_Kd" then
+			material.diffuseMap = path..l[#l]
+		elseif l[1] == "map_Ks" then
+			material.specularColorMap = path..l[#l]
+		elseif l[1] == "map_Ns" then
+			material.specularMap = path..l[#l]
+		elseif l[1] == "map_d" then
+			material.alphaMap = path..l[#l]
+		elseif l[1] == "map_bump" or l[1] == "bump" then
+			material.bumpMap = path..l[#l]
+		elseif l[1] == "disp" then
+			material.displacementMap = path..l[#l]
+		elseif l[1] == "decal" then
+			material.decalMap = path..l[#l]
+		end
+		::continue::
+	end
+	return materials
 end
 
 return loader

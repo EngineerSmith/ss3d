@@ -12,21 +12,23 @@ lw.setMode(1024, 1024*9/16, {vsync = false})
 
 local paused = false
 local scene = engine.newScene(lg.getDimensions())
-scene.ambientLight = 1
-scene.ambientVector = {0,1,4}
 scene.camera.pos.x = 0
 scene.camera.pos.z = 5
 
 local model
 
 function love.load()
-	local diffuse = lg.newImage("assets/earth.bmp")
-	local normal = lg.newImage("assets/earth_normals.jpg")
-	local specular = lg.newImage("assets/earth_specular.jpg")
-	
-	local obj = engine.loadObj("assets/earth.obj")
-    model = engine.newModel(obj.objects[1].vertices, obj.objects[1].indices, diffuse, normal, specular)
-    scene:addModel(model)
+	local obj = engine.loadObj("assets/house.obj")
+	lg.setDefaultFilter("nearest", "nearest")
+	for _, material in pairs(obj.materials) do
+		if material.diffuseMap then
+			material.diffuseMap = lg.newImage(material.diffuseMap)
+			material.diffuseMap:setWrap("repeat", "repeat")
+		end
+	end
+	for _, object in ipairs(obj.objects) do
+		scene:addModel(engine.newModel(object.vertices, object.indices, obj.materials[object.material]))
+	end
 end
 
 local timer, speed = 0, 1
@@ -37,7 +39,7 @@ function love.update(dt)
     end
 
     timer = timer + speed * dt
-    model:setTransform({0,-1.5,0}, {timer, cpml.vec3.unit_y})
+    --model:setTransform({0,-1.5,0}, {timer, cpml.vec3.unit_y})
 
     -- simple first-person camera movement
     local mx,my = 0,0
@@ -55,7 +57,7 @@ function love.update(dt)
     end
 
     if mx ~= 0 or my ~= 0 then
-        local angle = sene.camera.angle.x + atan2(my,mx)
+        local angle = scene.camera.angle.x + atan2(my,mx)
         local speed = 0.15
         scene.camera.pos.x = scene.camera.pos.x + cos(angle)*speed*dt*60
         scene.camera.pos.z = scene.camera.pos.z + sin(angle)*speed*dt*60
@@ -72,6 +74,10 @@ end
 function love.keypressed(k)
     if k == "escape" then
         paused = not paused
+	elseif k == "pageup" then
+		scene.camera.pos.y = scene.camera.pos.y + 0.5
+	elseif k == "pagedown" then
+		scene.camera.pos.y = scene.camera.pos.y - 0.5
     end
 end
 
