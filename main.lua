@@ -88,8 +88,9 @@ function love.draw()
 
     lg.setColor(0,0,0)
     lg.print("FPS: "..lt.getFPS(),0,0)
+	lg.print("Camera Pos "..scene.camera.pos.x..":"..scene.camera.pos.y..":"..scene.camera.pos.z..", Angle "..scene.camera.angle.x..":"..scene.camera.angle.y..":"..scene.camera.angle.z, 0, 16)
 
     if paused then
-        lg.print("PAUSED",0,16)
+        lg.print("PAUSED",0,32)
     end
 end
